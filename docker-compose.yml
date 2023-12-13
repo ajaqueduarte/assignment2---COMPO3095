@@ -1,0 +1,179 @@
+version: '3.9'
+
+services:
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    restart: unless-stopped
+    ports:
+      - "9411:9411"
+    container_name: zipkin
+    networks:
+      - spring
+
+  keycloak-db:
+    image: postgres:latest
+    restart: unless-stopped
+    container_name: keycloak-db
+    ports:
+      - "5431:5432"
+    environment:
+      - POSTGRES_USER=keycloak
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=keycloak
+    volumes:
+      - ./data/keycloak_psql:/data/postgres
+    networks:
+      - spring
+
+  keycloak:
+    image: jboss/keycloak:latest
+    restart: unless-stopped
+    container_name: keycloak
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_VENDOR=postgres
+      - DB_ADDR=keycloak-db
+      - DB_DATABASE=keycloak
+      - DB_USER=keycloak
+      - DB_PASSWORD=password
+      - DB_SCHEMA=public
+      - KEYCLOAK_USER=admin
+      - KEYCLOAK_PASSWORD=password
+      - KEYCLOAK_IMPORT=/opt/jboss/keycloak/realms/realm-export.json
+    volumes:
+      - ./init/keycloak/realms:/opt/jboss/keycloak/realms
+    depends_on:
+      - keycloak-db
+    networks:
+      - spring
+
+  api-gateway:
+    image: api-gateway
+    ports:
+      - "8000:8000"
+    build:
+      context: ./api-gateway
+      dockerfile: ./Dockerfile
+    restart: on-failure
+    container_name: api-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - spring
+
+  discovery-service:
+    image: discovery-service
+    ports:
+      - "8761:8761"
+    build:
+      context: ./discovery-service
+      dockerfile: ./Dockerfile
+    restart: on-failure
+    container_name: discovery-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      - postgresdb
+    networks:
+      - spring
+
+  comment:
+    image: comment
+    ports:
+      - "8082:8082"
+    build:
+      context: ./comment
+      dockerfile: ./Dockerfile
+    restart: on-failure
+    container_name: comment
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      - postgresdb
+    networks:
+      - spring
+
+  post:
+    image: post
+    ports:
+      - "8083:8083"
+    build:
+      context: ./post
+      dockerfile: ./Dockerfile
+    restart: on-failure
+    container_name: post
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      - mongodb
+    networks:
+      - spring
+
+  user:
+    image: user
+    ports:
+      - "8084:8084"
+    build:
+      context: ./user
+      dockerfile: ./Dockerfile
+    restart: on-failure
+    container_name: user
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      - postgresdb
+    networks:
+      - spring
+
+  friendship:
+    image: friendship
+    ports:
+      - "8085:8085"
+    build:
+      context: ./friendship
+      dockerfile: ./Dockerfile
+    container_name: friendship
+    restart: on-failure
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      - mongodb
+    networks:
+      - spring
+
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongoadmin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - ./data/mongo/products:/data/db
+      - ./data/mongo/docker-entrypoint-initdb.d/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    container_name: mongodb
+    restart: unless-stopped
+    command: mongod --auth
+    networks:
+      - spring
+
+  postgresdb:
+    image: postgres:latest
+    container_name: postgresdb
+    volumes:
+      - ./data/postgresql/data:/var/lib/postgresql/data
+    ports:
+      - "8055:5432"
+    restart: always
+    environment:
+      POSTGRES_USER: postgresadmin
+      POSTGRES_PASSWORD: password
+    networks:
+      - spring
+
+networks:
+  spring:
+    driver: bridge
+
